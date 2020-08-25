@@ -31,6 +31,8 @@ var maxConnectionsPerNode = 117;
 var nodeDistanceThreshhold = 100;
 var numNodeClumps = 4;
 var nodeClumps = [];
+var minClumpWeight = 1;
+var maxClumpWeight = 10;
 var nodes = [];
 var connections = [];
 var averageTimeInConnection = 110; //(ms)
@@ -293,6 +295,8 @@ function initPage() {
     document.getElementById('nodeDistanceThreshhold').value = nodeDistanceThreshhold.toString();
     document.getElementById('doubleSpendDelay').value = doubleSpendDelay.toString();
     document.getElementById('numNodeClumps').value = numNodeClumps.toString();
+    document.getElementById('minClumpWeight').value = minClumpWeight.toString();
+    document.getElementById('maxClumpWeight').value = maxClumpWeight.toString();
 }
 function initSimulation() {
     simulationArea = new SimulationArea();
@@ -407,6 +411,8 @@ function startTransaction(transaction,id) {
             <input type="text" id="minConnectionsPerNode" name="minConnectionsPerNode"></td>
         <td><label for="lname">Node Clumps:</label>
             <input type="text" id="numNodeClumps" name="numNodeClumbs"></td>
+        <td><label for="lname">Min Clump Weight:</label>
+            <input type="text" id="minClumpWeight" name="minClumpWeight"></td>
     </tr>
     <tr>
         <td><label for="lname">Height:</label>
@@ -419,6 +425,8 @@ function startTransaction(transaction,id) {
             <input type="text" id="maxConnectionsPerNode" name="maxConnectionsPerNode"></td>
         <td><label for="lname">Max Distance Nodes Can Be Connected:</label>
             <input type="text" id="nodeDistanceThreshhold" name="nodeDistanceThreshhold"></td>
+        <td><label for="lname">Max Clump Weight:</label>
+            <input type="text" id="maxClumpWeight" name="maxClumpWeight"></td>
     </tr>
 </form>
 </table>
