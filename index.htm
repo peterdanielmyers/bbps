@@ -30,6 +30,7 @@ var minConnectionsPerNode = 20;
 var maxConnectionsPerNode = 117;
 var nodeDistanceThreshhold = 100;
 var numNodeClumps = 4;
+var nodeClumps = [];
 var nodes = [];
 var connections = [];
 var averageTimeInConnection = 110; //(ms)
@@ -178,6 +179,13 @@ class Node {
             this.distances.push(d)
             this.connections.push(c)
         }
+    }
+}
+class NodeClump {
+    constructor(x,y,weight) {
+        this.x = x;
+        this.y = y;
+        this.weight = weight;
     }
 }
 class SimulationArea {
