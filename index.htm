@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<style>
+canvas {
+    border:1px solid #d3d3d3;
+    background-color: #f1f1f1;
+}
+</style>
+</head>
+<body onload="initPage()">
+    <h1>Bitcoin Node Network Transaction Propagation Simulator</h1>
+    <p>v. 0.1.2</p>
+<script>
+
+var myGamePiece;
+var myObstacles = [];
+var myScore;
+
+var canvasWidth = 1100;
+var canvasHeight = 600;
+var nodeWidth = 10;
+var nodeHeight = 10;
+var numNodes = 750;
+var numBadNodes = 100;
+var numMiningNodes = 10;
+var doubleSpendDelay = 50;
+var listeningColour = "grey";
+var transaction1Colour = "blue";
+var transaction2Colour = "red";
+var winningMinerColour = "green";
+var minConnectionsPerNode = 20;
+var maxConnectionsPerNode = 117;
+var nodeDistanceThreshhold = 100;
+var nodes = [];
+var connections = [];
+var averageTimeInConnection = 110; //(ms)
+var simulationArea;
+var ticker = 0;
+var tickDelay = 20;
+var distanceDivider = 2;
+var globalConnectionAttempts = 0;
+
+const LISTENING = 0;
+const TRANSACTION1 = 1;
+const TRANSACTION2 = 2;
+
+class Component {
+    constructor(width, height, colour, x, y, type) {
+        this.type = type;
+        this.score = 0;
+        this.width = width;
+        this.height = height;
+        this.speedX = 0;
+        this.speedY = 0;
+        this.x = x;
+        this.y = y;
+        //this.update(colour)
+    }
+    update(colour,strokeColour,miningDot) {
+        var ctx = simulationArea.context;
+        if (this.type == "text") {
+            ctx.font = this.width + " " + this.height;
+            ctx.fillStyle = colour;
+            ctx.fillText(this.text, this.x, this.y);
+        } else if (this.type == "connector") {
+            ctx.beginPath();
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = listeningColour;
+            ctx.moveTo(this.x, this.y);
+            ctx.lineTo(this.width, this.height);
+            ctx.stroke();
+        } else {
+            //ctx.fillStyle = color;
+            //ctx.fillRect(this.x, this.y, this.width, this.height);
+            ctx.beginPath();
+            ctx.arc(this.x, this.y,this.width/2,0,2*Math.PI,false);
+            ctx.fillStyle = colour;
+            ctx.fill();
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = strokeColour;
+            ctx.stroke();
+            if (miningDot) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y,this.width/3,0,2*Math.PI,false);
+                ctx.fillStyle = "black";
+                ctx.fill();
+                //ctx.lineWidth = 1;
+                //ctx.strokeStyle = "black";
+                //ctx.stroke();
+            }
+        }
+    }
+}   
+class Connection {
+    constructor(node1x,node1y,node2x,node2y,distance) {
+        this.distance = distance;
+        this.sprite = new Component(
+            node2x, node2y,
+            "grey", node1x, node1y, "connector");
+    }
+    update() {
+        this.sprite.update();
+    }
+}
+class Message {
+    constructor(data,distance){
+        this.data = data;
+        this.distance = distance;
+    }
+}
+class Node {
+    constructor(x,y,maxConnections){
+        this.x = x;
+        this.y = y;
+        this.colour = listeningColour;
+        this.sprite = new Component(nodeWidth, nodeHeight, listeningColour, this.x, this.y);
+        this.maxConnections = maxConnections;
+        this.nodes = [];
+        this.distances = [];
+        this.connections = [];
+        this.receivedMessages = [];
+        this.winningMiner = false;
+        this.bad = false;
+        this.mining = false;
+        this.status = LISTENING;
+    }
+    update() {
+        var i;
+        for (i = 0; i < this.receivedMessages.length; i++) {
+            this.receivedMessages[i].distance -= 1;
+            //document.getElementById('distanceDisplay').innerHTML = this.receivedMessages[i].distance.toString();
+            if (this.receivedMessages[i].distance < 1) {
+                this.status = this.receivedMessages[i].data;
+                globalConnectionAttempts -= this.receivedMessages.length;
+                this.receivedMessages.length = 0;
+            }
+        }
+        var strokeColour = listeningColour;
+        if (this.bad) {
+            strokeColour = "black";
+        }
+        switch (this.status) {
+          case TRANSACTION1:
+            for (i = 0; i < this.nodes.length; i++) {
+                this.nodes[i].receive(TRANSACTION1,this.distances[i]);
+            }
+            this.sprite.update(transaction1Colour,strokeColour,this.mining);
+            break;
+          case TRANSACTION2:
+            for (i = 0; i < this.nodes.length; i++) {
+                this.nodes[i].receive(TRANSACTION2,this.distances[i]);
+            }
+            this.sprite.update(transaction2Colour,strokeColour,this.mining);
+            break;
+          default:
+            this.sprite.update(listeningColour,strokeColour,this.mining);
+        }
+        if (this.winningMiner) {
+            var ctx = simulationArea.context;
+            ctx.beginPath();
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = winningMinerColour;
+            ctx.rect(this.x-nodeWidth,this.y-nodeHeight,nodeWidth*2,nodeHeight*2);
+            ctx.stroke();
+        }
+    }
+    receive(transaction,distance) {
+        if (this.status == LISTENING) {
+            if (this.bad && transaction == TRANSACTION1) {
+            } else {
+                this.receivedMessages.push(new Message(transaction,distance/distanceDivider));
+                globalConnectionAttempts++;
+            }
+        }
+    }
+    connect(n,d,c) {
+        if (!this.nodes.includes(n)) {
+            this.nodes.push(n)
+            this.distances.push(d)
+            this.connections.push(c)
+        }
+    }
+}
+class SimulationArea {
+    constructor() {
+        this.canvas = document.createElement("canvas");
+    }
+    init() {
+        this.canvas.width = parseInt(document.getElementById('canvasWidth').value,10);
+        this.canvas.height = parseInt(document.getElementById('canvasHeight').value,10);
+        canvasWidth = parseInt(document.getElementById('canvasWidth').value,10);
+        canvasHeight = parseInt(document.getElementById('canvasHeight').value,10);
+        this.context = this.canvas.getContext("2d");
+        document.body.insertBefore(this.canvas, document.body.childNodes[0]);
+        this.frameNo = 0;
+        
+        var i;
+        for (i = 0; i < nodes.length; i++) {
+            nodes[i].update();
+        }
+        
+        for (i = 0; i < nodes.length; i++) {
+            var j;
+            for (j = 0; j < nodes.length; j++) {
+                var d = nodeDistance(nodes[i],nodes[j]);
+                if (d < nodeDistanceThreshhold) {
+                    if (nodes[i].connections.length < nodes[i].maxConnections &&
+                        nodes[j].connections.length < nodes[j].maxConnections) {
+                        connectNodes(nodes[i],nodes[j],d);
+                    }
+                }
+            }
+        }
+        
+        for (i = 0; i < connections.length; i++) {
+            connections[i].update();
+        }
+    }
+    start() {
+        this.interval = setInterval(updateSimulation, tickDelay);
+    }
+    stop() {
+        clearInterval(this.interval);
+    }
+    clear() {
+        this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+}
+
+function connectNodes(node1,node2,d) {
+    connections.push(new Connection(
+        node1.sprite.x, node1.sprite.y,node2.sprite.x,node2.sprite.y,d
+    ));
+    node1.connect(node2,d,connections[connections.length - 1]);
+    node2.connect(node1,d,connections[connections.length - 1]);
+    var total_distance = 0;
+    for (i = 0; i < connections.length; i++) {
+        total_distance += connections[i].distance;
+    }
+    var average_distance = total_distance/connections.length;
+    document.getElementById('connectionNum').innerHTML = connections.length.toString();
+    document.getElementById('connectionAverageLength').innerHTML = average_distance.toString();
+    document.getElementById('oneSecTicks').innerHTML = Math.floor(1000*(average_distance/averageTimeInConnection)).toString();
+}
+function createNodes() {
+    var i;
+    numNodes = parseInt(document.getElementById('numNodes').value,10);
+    maxConnectionsPerNode = parseInt(document.getElementById('maxConnectionsPerNode').value,10);
+    minConnectionsPerNode = parseInt(document.getElementById('minConnectionsPerNode').value,10);
+    nodeIndices = []
+    for (i = 0; i < numNodes; i++) {
+        nodes.push(new Node(
+            Math.floor(Math.random() * (canvasWidth-nodeWidth*2)+nodeWidth),
+            Math.floor(Math.random() * (canvasHeight-nodeHeight*2)+nodeHeight),
+            randRange(minConnectionsPerNode,maxConnectionsPerNode)
+        ));
+        nodeIndices.push(i)
+    }
+    simulationArea.init();
+}
+function disableButton(btnId) {
+    if(btnId){document.getElementById(btnId).disabled = 'true';}
+}
+function everyinterval(n) {
+    if ((myGameArea.frameNo / n) % 1 == 0) {return true;}
+    return false;
+}
+function getRandomSubarray(arr,size) {
+    var shuffled = arr.slice(0), i = arr.length, temp, index;
+    while (i--) {
+        index = Math.floor((i + 1) * Math.random());
+        temp = shuffled[index];
+        shuffled[index] = shuffled[i];
+        shuffled[i] = temp;
+    }
+    return shuffled.slice(0, size);
+}
+function initPage() {
+    document.getElementById('canvasWidth').value = canvasWidth.toString();
+    document.getElementById('numNodes').value = numNodes.toString();
+    document.getElementById('numBadNodes').value = numBadNodes.toString();
+    document.getElementById('maxConnectionsPerNode').value = maxConnectionsPerNode.toString();
+    document.getElementById('minConnectionsPerNode').value = minConnectionsPerNode.toString();
+    document.getElementById('canvasHeight').value = canvasHeight.toString();
+    document.getElementById('numMiningNodes').value = numMiningNodes.toString();
+    document.getElementById('nodeDistanceThreshhold').value = nodeDistanceThreshhold.toString();
+    document.getElementById('doubleSpendDelay').value = doubleSpendDelay.toString();
+}
+function initSimulation() {
+    simulationArea = new SimulationArea();
+    simulationArea.init();
+}
+function nodeDistance(node1,node2) {
+    x = node2.sprite.x - node1.sprite.x;
+    y = node2.sprite.y - node1.sprite.y;
+    return Math.sqrt(Math.pow(x,2) + Math.pow(y,2));
+}
+function randRange(min,max) {
+  return Math.floor(Math.random() * (max - min + 1) + min);
+}
+function setBadNodes() {
+    numBadNodes = parseInt(document.getElementById('numBadNodes').value,10);
+    badNodes = getRandomSubarray(nodeIndices,numBadNodes);
+    for (i = 0; i < numBadNodes; i++) {
+        nodes[badNodes[i]].bad = true;
+    }
+    updateSimulationArea();
+}
+function setMiningNodes() {
+    numMiningNodes = parseInt(document.getElementById('numMiningNodes').value,10);
+    miningNodes = getRandomSubarray(nodeIndices,numMiningNodes);
+    for (i = 0; i < numMiningNodes; i++) {
+        nodes[miningNodes[i]].mining = true;
+    }
+    updateSimulationArea();
+}    
+function startSimulation(id) {
+    disableButton(id);
+    simulationArea.start();
+}
+function stopSimulation(id) {
+    disableButton(id);
+    simulationArea.stop();
+}
+function updateSimulation() {
+    ticker++;
+    if (ticker==doubleSpendDelay){startTransaction(TRANSACTION2);}
+    document.getElementById('tickerDisplay').innerHTML = ticker.toString();
+    document.getElementById('globalConnectionAttempts').innerHTML = globalConnectionAttempts.toString();
+    if (globalConnectionAttempts < 1) {
+        stopSimulation();
+        document.getElementById('globalConnectionAttempts').innerHTML = 'Transaction Propagation Simulation Complete';
+        var successfulMiner = Math.floor(Math.random() * (numMiningNodes-1));
+        var i;
+        var j = 0;
+        debugger;
+        for (i=0;i<nodes.length;i++) {
+            if (nodes[i].mining) {
+                if (j==successfulMiner) {
+                    nodes[i].winningMiner = true;
+                    document.getElementById('globalConnectionAttempts').innerHTML = 'Transaction Propagation Simulation Complete';
+                    var final_text = '';
+                    switch (nodes[i].status) {
+                        case LISTENING:
+                            final_text = 'had not received the transaction or the double spend transaction.'
+                            break;
+                        case TRANSACTION1:
+                            final_text = 'had received the genuine transaction.'
+                            break;
+                        case TRANSACTION2:
+                            final_text = 'had received the double spend transaction.'
+                    }
+                    document.getElementById('output').innerHTML = 'The next block is won by a node that '.concat(final_text);
+                    break;
+                } else {
+                    j++;
+                }
+            }
+        }
+    }
+    updateSimulationArea();
+}
+function updateSimulationArea() {
+    simulationArea.clear();
+    simulationArea.frameNo += 1;
+    var i;
+    for (i = 0; i < connections.length; i++) {
+        connections[i].update();
+    }
+    for (i = 0; i < numNodes; i++) {
+        nodes[i].update();
+    }
+}
+function startTransaction(transaction,id) {
+    disableButton(id);
+    doubleSpendDelay = parseInt(document.getElementById('doubleSpendDelay').value,10);
+    var i;
+    for (i = 0; i < numNodes; i++) {
+        if (nodes[i].status == LISTENING && !nodes[i].bad) {
+            nodes[i].status = transaction;
+            nodes[i].update();
+            break;
+        }
+    }
+}
+
+</script>
+<br>
+<table>
+<form action="/action_page.php">
+    <tr>
+        <td><label for="fname">Width:</label>
+            <input type="text" id="canvasWidth" name="canvasWidth"></td>
+        <td><label for="lname">Number of Nodes:</label>
+            <input type="text" id="numNodes" name="numNodes"></td>
+        <td><label for="lname">Number of Bad Nodes:</label>
+            <input type="text" id="numBadNodes" name="numBadNodes"></td>
+        <td><label for="lname">Min Connections per Node:</label>
+            <input type="text" id="minConnectionsPerNode" name="minConnectionsPerNode"></td>
+        <td></td>
+    </tr>
+    <tr>
+        <td><label for="lname">Height:</label>
+            <input type="text" id="canvasHeight" name="canvasHeight"></td>
+        <td><label for="lname">Double Spend Delay:</label>
+            <input type="text" id="doubleSpendDelay" name="doubleSpendDelay"></td>
+        <td><label for="lname">Number of Mining Nodes:</label>
+            <input type="text" id="numMiningNodes" name="numMiningNodes"></td>
+        <td><label for="lname">Max Connections per Node:</label>
+            <input type="text" id="maxConnectionsPerNode" name="maxConnectionsPerNode"></td>
+        <td><label for="lname">Max Distance Nodes Can Be Connected:</label>
+            <input type="text" id="nodeDistanceThreshhold" name="nodeDistanceThreshhold"></td>
+    </tr>
+</form>
+</table>
+<button id="initSimulation" onclick="initSimulation(this.id)">1. Init Simulation</button>
+<button id="createNodes" onclick="createNodes(this.id)">2. Create Nodes</button>
+<button id="setBadNodes" onclick="setBadNodes(this.id)">3. Set Bad Nodes</button>
+<button id="setMiningNodes" onclick="setMiningNodes(this.id)">4. Set Mining Nodes</button>
+<button id="transaction1Button" onclick="startTransaction(TRANSACTION1,this.id)">5. Set Transaction</button>
+<button id="startButton" onclick="startSimulation(this.id)">6. Start Simulation</button>
+<button id="stopButton" onclick="stopSimulation(this.id)">7. Stop Simulation</button>
+<table>
+    <tr><td>Number of connections:</td><td id="connectionNum"></td><td>Average length of connections:</td><td id="connectionAverageLength"></td><td>Ticks in 1sec if average connection is 110ms:</td><td id="oneSecTicks"></td></tr>
+    <tr><td>Ticks:</td><td id="tickerDisplay"></td><td>Active connection attempts:</td><td id="globalConnectionAttempts"></td></tr>
+    <tr><td id="output"></td></tr>
+    </table>
+    
+    <div id="toc_container">
+    <p class="toc_title">Contents</p>
+    <ul class="toc_list">
+        <li><a href="#Usage">1. Usage</a></li>
+        <li><a href="#Known_Limitations">2. Known Limitations</a></li>
+        <li><a href="#Paramaters_and_Variables">3. Understanding Parameters and Variables</a></li>
+        <ul>
+            <li><a href="#Width_and_Height">3.1 Width and Height</a></li>
+            <li><a href="#Number_of_Nodes">3.2 Number of Nodes</a></li>
+            <li><a href="#Number_of_Bad_Nodes">3.3 Number of Bad Nodes</a></li>
+            <li><a href="#Number_of_Mining_Nodes">3.4 Number of Mining Nodes</a></li>
+            <li><a href="#Distance_Nodes">3.5 Distance Nodes Can Be Created</a></li>
+            <li><a href="#Double_Spend">3.6 Double Spend Delay</a></li>
+        </ul>
+        <li><a href="#Background">4. Background</a></li>
+        <ul>
+            <li><a href="#Context">4.1 Context</a></li>
+            <li><a href="#Satoshi_Response">4.2 Satoshi's Response</a></li>
+            <ul>
+            <li><a href="#Pre_Blockchain_Validation">4.2.1 Pre-Blockchain Validation</a></li>
+            <li><a href="#Two_Races">4.2.2 Bitcoin's Two Races</a></li>
+            </ul>
+            <li><a href="#Context_1">4.3 Context 1 of Satoshi's Later Comments on Future Network Structure</a></li>
+            <li><a href="#Context_2">4.4 Context 2 of Satoshi's Later Comments on Future Network Structure</a></li>
+            <li><a href="#Future_Network">4.5 Satoshi's Later Comments on Future Network Structure</a></li>
+        </ul>
+        <li><a href="Reading">Relevant Reading</a></li>
+        <li><a href="#Changelog">Changelog</a></li>
+    </ul>
+    </div>
+    
+    <h2 id="Usage">1. Usage</h2>
+    <ul><li>Set the parameters you want for the simulation.</li>
+        <li>Click the buttons in the numbered order.
+            <ul><li>Width and Height must be set before pressing 1. Init Simulation.</li>
+                <li>Number of Nodes, Min Connections per Node, Max Connections per Node, and Max Distance Nodes Can Be Connected must be set before pressing 2. Create Nodes.</li>
+                <li>Number of bad nodes must be set before pressing 3. Set Bad Nodes.</li>
+                <li>Number of mining nodes must be set before pressing 4. Set Mining Nodes.</li>
+                <li>Double Spend Delay must be set before pressing 6. Start Simulation.</li>
+            </ul>
+        </li>
+        <li>The simulation will stop when complete and choose a miner to win the next block. You can stop the simulation early with button 7.</li>
+        <li>(You don't <i>need</i> to set "bad nodes" or "mining nodes".)</li></ul>
+    
+    <h2 id="Known_Limitations">2. Known Limitations</h2>
+    <p>There are at least two significant limitations to be aware of when using this simulation:</p>
+    <ol><li>Currently, nodes are modelled as being roughly equally distributed. The number of connections each node has are randomly chosen, so some nodes will have more connections than others. But, because the parameters are applied pseudo-randomly, nodes are more evenly distributed than they would be in real life. The most significant impact this has is that bad nodes have a much more significant impact in very large networks. In reality, if you were a bad actor creating bad nodes it would be extremely difficult, costly, and perhaps impossible to ensure your bad nodes were so well distributed across the network. So, for large networks, the effects of bad nodes are currently over-emphasised.</li>
+        <li>Currently, when a node receives a bad transaction, it is just ignored.</li></ol>
+    
+    <h2 id="Paramaters_and_Variables">3. Understanding Parameters and Variables</h2>
+    
+    <h3 id="Width_and_Height">3.1 Width and Height</h3>
+    <p>These are just the width and height of the html canvas object. Nodes are distributed evenly throughout the canvas. So size does matter. If you have lots of nodes, it needs to be bigger otherwise it's hard to see what's happening. If you have few nodes, a large canvas, and a small distance for nodes to connect, then the network won't join up properly.</p>
+    
+    <h3 id="Number_of_Nodes">3.2 Number of Nodes</h3>
+    <p>Estimates of the number of nodes (with rough numbers as at 22 August 2020):</p>
+    <ul><li>On BTC (~45,000): <a href="http://luke.dashjr.org/programs/bitcoin/files/charts/software.html">http://luke.dashjr.org/programs/bitcoin/files/charts/software.html</a></li>
+        <li>On BCH (~1,260): <a href="https://cash.coin.dance/nodes">https://cash.coin.dance/nodes</a> </li>
+        <li>On BSV (~300): <a href="https://sv.coin.dance/nodes">https://sv.coin.dance/nodes</a></li></ul>
+    
+    <h3 id="Number_of_Bad_Nodes">3.3 Number of Bad Nodes</h3>
+    <p>"Bad Nodes" are nodes that are complicit with the double spend attack. They are programmed to refuse the original transaction, so will only process the double spend transaction. As noted in the section on limitations, the simulation over emphasises the effects of bad nodes on a large network, because it generously assumes that the attacker is able to control nodes that are well distributed and connected throughtout the network. In reality, for a large network, this is extremely difficult—maybe impossible—to achieve.</p>
+    <h3>Min/Max Connections per Node</h3>
+    <p>In Bitcoin Core default settings, maximum available connection slots per node are 117, this figure comes from: <a href="https://en.bitcoin.it/wiki/Clearing_Up_Misconceptions_About_Full_Nodes#Very_roughly_estimating_the_total_node_count">https://en.bitcoin.it/wiki/Clearing_Up_Misconceptions_About_Full_Nodes#Very_roughly_estimating_the_total_node_count</a></p>
+    <p>People running nodes with poorer internet connection and weaker hardware may restrict the number of connections they make, but I presume they would want a certain number of connections to justify having a node at all. I arbitrarily picked 20 as the default for this figure.</p>
+    
+    <h3 id="Number_of_Mining_Nodes">3.4 Number of Mining Nodes</h3>
+    <p>Technically speaking, <i>for every block, there is only <b>one</b> mining node.</i></p>
+    <p>This is really, really, really important to understand, and a lot of people don't recognise the implications: for every block, there is only <b>one</b> mining node. This is because mining is a zero-sum game.</p>
+    <p>That means that—for every single block—there are <span style="font-family:monospace;">numNodes-1</span> non-mining nodes.</p>
+    <p>This simulator only simulates a time span leading up the winning of <i>one</i> block. If you wait until the end of the simulation, it will randomly choose a winning node to generate the next block. This node is the only true "mining node" for that block.</p>
+    <p>So, what does "number of mining nodes" mean? <b>It means the number of nodes that are racing to find the hash for the next block.</b> The only relevance that the number of and computing power possessed by these nodes have to the blockchain is that they influence the difficulty of the following block. But, the difficulty of the next block is completely irrelevant to the process of transaction propagation. When transactions are propagating before a block is mined, any node that doesn't win the block will end up being non-mining nodes for that block. Furthermore, the endtire network is "blind" as to which node will actually win the block. Two competing versions of a transaction are therefore like a selfish gene: propagating as far as possible, until ultimately one node—and nobody knows which one—will win a block. Whichever transaction that node has received when it wins the block will be written to the chain.</p>
+    <p>Not only does a transaction not know which node will "win", it also doesn't know which nodes are even trying to find a block this time around.</p>
+    
+    <h3 id="Distance_Nodes">3.5 Distance Nodes Can Be Created</h3>
+    <p>The screen distance between nodes in the simulation represents latency in the connection between nodes. For this discussion, I will assume that the average latency between peers is 110ms (see <a href="https://hackingdistributed.com/2017/02/15/state-of-the-bitcoin-network/#:~:text=The%20figure%20shows%20the%20estimated,peers%20is%20around%20110%20ms.">https://hackingdistributed.com/2017/02/15/state-of-the-bitcoin-network/#:~:text=The%20figure%20shows%20the%20estimated,peers%20is%20around%20110%20ms.</a>).</p>
+    <p>Currently, this distance is measured in number of pixels divided by 2 (in the JS this number is stored in the variable <span style="font-family:monospace;">distanceDivider</span>). This number was chosen just so the simulation progresses at a pleasing speed. We can call these "distance units".</p>
+    <p>After creating the nodes, as of v. 0.1.1 the simulator will display how many connections there are and their average length in distance units. From this, you can decide how long to set the "Double Spend Delay" parameter. In Satoshi's Snack Machine Problem post, he/she/they imagined a double spend attack as having a delay of about 1 sec. In almost all scenarios the entire network is saturated by then, so test the strength of a network a shorter timeframe needs to be selected. To help estimate how many ticks to leave, as of v. 0.1.2 the simulation gives you an estimate of how many ticks there are in a second assuming that average time between peers is 110ms.</p>
+    <p>Limiting the distance between peers can simulate a "mesh" network with less interconnecivity.</p>
+    
+    <h3 id="Double_Spend">3.6 Double Spend Delay</h3>
+    <p>The number of ticks before the double spend attack begins. Use the estimated "ticks per second" to get a sense of how much time a tick represents.</p>
+    
+    <h2 id="Background">4. Background</h2>
+    <p>The background to this simulation is Satoshi's post on "The Snack Machine Problem", available here: <a href="https://bitcointalk.org/index.php?topic=423.msg3819#msg3819">https://bitcointalk.org/index.php?topic=423.msg3819#msg3819</a></p>
+    
+    <h3 id="Context">4.1 Context</h3>
+    <p>Satoshi was responding to a thread where <a href="https://bitcointalk.org/index.php?topic=423.msg3647#msg3647">someone had posed this problem</a> (here quoted in full, but emphasis mine and I have labelled two sentences A and B):</p>
+    <p style="margin-left:5%;font-family:monospace;">
+        How would a Bitcoin snack  machine work?<br />
+        1) You want to walk up to the machine. Send it a bitcoin.<br />
+        2) ?<br />
+        3) Walk away eating your nice sugary snack. (Profit!)<br />
+        <b>You don't want to have to wait an hour for you transaction to be confirmed.</b> (A)<br />
+        <b>The vending machine company doesn't want to give away lots of free candy.</b> (B)<br />
+        <b>How does step 2 work?</b></p>
+    <p>The (false) assumption behind this problem is that <i>Bitcoin transactions are validated by miners</i>. This assumption is evident from sentences A and B.</p>
+    <p>If one makes this assumption, then on the surface a Bitcoin snack machine would seem to be impossible, because:</p>
+    <ul><li>Sentence A: Blocks are only created every 10 mins, so it could take ages for the transaction to actually be written to the blockchain.</li>
+        <li>Sentence B: The vending machine company don't want people walking away with free candy because the vending machine can't validate transactions. So: the machine needs to validate transactions <i>faster than they can be written to the blockchain</i>.</ul>
+    <p>If <i>miners</i> validate transactions, then the snack machine doesn't seem possible, hence the original post.</p>
+    
+    <h3 id="Satoshi_Response">4.2 Satoshi's Response</h3>
+    <p>There was a lot of discussion in response to this post, but I will just skip ahead to Satoshi's answer to this problem. Here's the whole of Satoshi's response (again, all emphasis mine, and I've labelled some sentences):</p>
+    <p style="margin-left:5%;font-family:monospace;">
+        I believe it'll be possible for a payment processing company to provide as a service the rapid distribution of transactions with <b>good-enough checking in something like 10 seconds or less</b>. (A)<br />
+        The <b>network nodes</b> only <b>accept</b> the <b>first version</b> of a transaction they receive to incorporate into the block <b>they're trying to generate</b> (B).  When you broadcast a transaction, if someone else <b>broadcasts a double-spend at the same time</b>, it's <b>a race to propagate to the most nodes first</b> (C).  If one has a slight head start, it'll <b>geometrically spread through the network faster and get most of the nodes</b> (D).<br />
+        A rough back-of-the-envelope example: (E)<br />
+        1         0<br />
+        4         1<br />
+        16        4<br />
+        64        16<br />
+        80%      20%<br />
+        So if a double-spend has to wait even a second, it has a huge disadvantage.<br />
+        The payment processor <b>has connections with many nodes</b> (F).  When it gets a transaction, <b>it blasts it out, and at the same time monitors the network for double-spends</b> (G).  If it receives a double-spend on any of its many listening nodes, then <b>it alerts that the transaction is bad</b> (H).  A double-spent transaction <b>wouldn't get very far without one of the listeners hearing it</b> (I).  The double-spender would have to wait until the listening phase is over, but by then, the payment processor's broadcast has reached most nodes, or is so far ahead in propagating that the double-spender has no hope of grabbing a significant percentage of the remaining nodes.</p>
+    <p>It was this post and this explanation about which Satoshi said his famous "If you don't believe me or don't get it, I don't have time to try to convince you, sorry." You can see that here: <a href="https://bitcointalk.org/index.php?topic=532.msg6306#msg6306">https://bitcointalk.org/index.php?topic=532.msg6306#msg6306</a></p>
+    <p>And it is certainly the case that after the block size wars, the point Satoshi made in this post is one of the most misunderstood things about Bitcoin. So, let's examine what he says very carefully:</p>
+    
+    <h4 id="Pre_Blockchain_Validation">4.2.1 Pre-Blockchain Validation</h4>
+    <p><b>Sentence A</b> shows Satoshi is imagining a situation where transactions are validated <b>before they are written to the blockchain</b>:</p>
+    <ul><li>He/She/They talk(s) about "checking": so what is the <i>something</i> that is "checking" transactions?</li>
+        <li>This checking can be "good enough", implying that it's <i>not as secure</i> as the hash-war process that protects what is written to the blockchain. In the <a href="https://nakamotoinstitute.org/bitcoin/">Bitcoin Whitepaper</a> Satoshi described the chances of an attacker successfully completing a double spend as "vanishingly small as he falls further behind" in the race to find the next block (end of paragraph 5 under §11, or p. 7 of <a href="https://nakamotoinstitute.org/static/docs/bitcoin.pdf">the pdf</a>).</li>
+        <li>This checking occurs "in something like 10 seconds or less": meaning it <i>cannot be</i> the mining process that performs the checking, as blocks take 10mins to find.</li></ul>
+    <p>So, Satoshi thought that something <i>other than the blockchain</i> would validate the transaction. This validation is: (a) faster than finding a block; (b) less secure than finding a block, but "good enough".</p>
+    <p><b>Sentence B</b> shows that Satoshi thought nodes would perform this checking before a block is created:</p>
+    <ul><li>He/She/They talk(s) about "network nodes" in the process of "trying to generate" a block.</li>
+        <li>These "network nodes" either "accept" a transaction or they don't.</li>
+        <li>The <i>basis</i> for accepting a transaction is whether it is the "first version" of the transaction or not.</li></ul>
+    <p>So, Satoshi thought that <i>before writing a block to the blockchain</i> nodes would undergo a process of validating transactions by accepting only the first version of transactions they receive, and rejecting different versions they receive after this.</p>
+    
+    <h4 id="Two_Races">4.2.2 Bitcoin's Two Races</h4>
+    <p>Satoshi's post imagines that there are at least two races going on within the Bitcoin network. The most famous race is clearly described in the Whitepaper: it is the race for nodes to find the next block.</p>
+    <p>But! <b>Sentence C</b> describes the pre-blockchain validation process as "a race to propagate to the most nodes first". This is a different race to the hash-war to find the next block.</p>
+    <p>This race is what the above script simulates: the race between a transaction and a double spend to propagate throughout the network of nodes.</p>
+    
+    <h3 id="Context_1">4.3 Context 1 of Satoshi's Later Comments on Future Network Structure</h3>
+    <p>Twelve days after his/her/their response to the Bitcoin Snack Machine thread, Satoshi referred back to the comment in response to another post about scaling. In this later post, Satoshi describes what he/she/they imagine the future of the Bitcoin network to look like. Satoshi's comments in that post are frequently cited on the internet out of context, and misread. So, here is the <a href="https://bitcointalk.org/index.php?topic=532.msg4963#msg4963">full text of the original post</a> to which Satoshi was responding (as before, emphasis and sentence labelling mine):</p>
+    <p style="margin-left:5%;font-family:monospace;">I'm curious about the developers feelings on scalability. For example, could the system handle a million users, doing say 5 transactions each per day. 5 million transactions per day is roughly 35,000 transactions per 10 minute period?<br />
+        <b>Is there a bottle neck in propagating 35,000 transactions to a million nodes for block generation</b> (A)? Or has that issue been designed for?</p>
+    <p>Post 2016, the Bitcoin scaling debate has been almost exclusively about how many transactions fit into a block. But the question being asked by this poster in 2010 was whether there would be a scaling bottleneck in the <b>propagation of transactions</b>.</p>
+    
+    <h3 id="Context_2">4.4 Context 2 of Satoshi's Later Comments on Future Network Structure</h3>
+    <p>There was a lot of discussion in response to that post also, but instead of jumping straight to Satoshi's response, I will stop at an earlier post in the thread. This is an important post, because Satoshi quotes it and directly responds to it later. It is available here: <a href="https://bitcointalk.org/index.php?topic=532.msg6269#msg6269">https://bitcointalk.org/index.php?topic=532.msg6269#msg6269</a> (emphasis and sentence labelling again mine):</p>
+    <p style="margin-left:5%;font-family:monospace;">I am convinced that bandwidth, disk space, and computation time necessary <b>to distribute and "finalize" a transaction</b> will be prohibitively expensive for micro-payments (A).  Consider for a second that the current banking industry is unable to provide a reasonable micropayment solution that does not involve depositing a reasonable sum and only allowing a withdraw after a reasonable sum has been accumulated.<br />
+        Besides, 10 minutes is too long to verify that payment is good.  It needs to be as fast as swiping a credit card is today.<br />
+        Thus we <b>need bit-banks</b> that allow instant transfers among members and peer banks (B).   Anyone can open a bit-bank but the system would, by necessity operate on some level of trust.  Transfers in and out of the banks and peer-to-peer would still be possible but will be more costly.   Thus, a bit bank could make money by enabling transfers cheaper and faster than the swarm with the added risk of trusting the bank.  A bank has to maintain trust to make money.</p>
+    <p>In this final response on the thread before Satoshi posts, the user is talking about two problems with transactions. These are described in sentence A: 1. <i>distributing</i> transactions and 2. <i>finalising</i> transactions. It is important to recognise that discussion of these two <i>different</i> things are the context of Satoshi's response.</p>
+    <p>Note also in sentence B that the user had suggested there would be a need for "bit-banks", i.e. some sort of <b>trusted 3rd party</b>. In the first paragraph of the Whitepaper Satoshi articulates the problem that Bitcoin solves as being a need for a financial system without trusted 3rd parties. It is therefore not a surprise that at this point in the thread, Satoshi responds.</p>
+    
+    <h3 id="Future_Network">4.5 Satoshi's Later Comments on Future Network Structure</h3>
+    <p>Here is now the whole of Satoshi's response, which is available here: <a href="https://bitcointalk.org/index.php?topic=532.msg6306#msg6306">https://bitcointalk.org/index.php?topic=532.msg6306#msg6306</a> (again, all emphasis mine, and I've labelled some sentences):</p>
+    <p style="margin-left:5%;font-family:monospace;">The current system <b>where every user is a network node is not the intended configuration for large scale</b> (A).  That would be like every Usenet user runs their own NNTP server (B).  The design supports <b>letting users just be users</b> (C).  The more burden it is to run a node, the fewer nodes there will be (D).  Those few nodes will be big server farms (E).  The rest will be <b>client nodes that only do transactions and don't generate</b> (F).<br />
+        Quote from: bytemaster on July 28, 2010, 08:59:42 PM<br />
+        Besides, 10 minutes is too long to verify that payment is good.  It needs to be as fast as swiping a credit card is today.<br />
+        See the snack machine thread, I outline how <b>a payment processor could verify payments well enough</b> (G), actually really well (much lower fraud rate than credit cards), in something like 10 seconds or less.  If you don't believe me or don't get it, I don't have time to try to convince you, sorry.<br />
+        <a href="http://bitcointalk.org/index.php?topic=423.msg3819#msg3819">http://bitcointalk.org/index.php?topic=423.msg3819#msg3819</a></p>
+    <p>The context to this post was an original question about whether transaction propagation could scale, and the immediately preceding post doubted whether transactions could not be economically 1. distributed and 2. finalised for micropayments. In Satoshi's first paragraph he/she/they address these two issues separately:</p>
+    <p>In <b>Sentence A</b> Satoshi describes that when the Bitcoin system grows to a "large scale" it will have to change. Here Satoshi uses the term "network node". This term is contrasted with another term at the end of the paragraph: "client nodes" in <b>sentence F</b>. What are these two different types of nodes? What do they do? Our aim here will be to answer these questions, but first because this paragraph is frequently misunderstood, we must look carefully at the function of <b>sentence D</b> in the paragraph, and what Satoshi is attempting to achieve by writing the paragraph.</p>
+    <p>In <b>sentence D</b> Satoshi simply uses the term "node". A frequent misunderstanding of Satoshi's post here is to equate "node" with the previous reference to "network node". This misunderstanding reads <b>sentence D</b> as essentially repeating what was said in <b>sentence A</b>. But, rather, <b>sentence D</b> builds on the previous argument by making a <i>general observation</i> about what happens in systems <i>where running nodes becomes burdensome</i>. Two pieces of evidence for this interpretation are that (a) people tend not to repeat themselves needlessly, and especially not Satoshi who's words seems always efficient, and (b) the two sentences following this generalised observation demonstrate a category split between two different types of nodes in his/her/their mind(s): the "few nodes" that will be "server farms" (<b>sentence E</b>) and the "rest" of the nodes that will be "client nodes" (<b>sentence F</b>).</p>
+    <p>What is the purpose of Satoshi's paragraph? What is Satoshi trying to achieve? (In literary studies this is called discovering the "pragmatic effect" of a discourse). The paragraph is introducing his/her/their readers to the <i>idea</i> of <i>two different kinds of node</i>. This is a <i>new idea</i> for the people Satoshi is speaking to, because for the readers contemporary with Satoshi all nodes were the same (as Satoshi stated in <b>sentence A</b>), this is why Satoshi had to <i>explain</i> idea of two different types of nodes. It is also, therefore, not a surprise to consider that this distinction in types of nodes was <i>not described in the Bitcoin Whitepaper</i>. This paragraph therefore also provides evidence that <i><b>Satoshi did not expect Bitcoin to remain identical to the system he/she/they described in the Whitepaper</b></i>.</p>
+    <p>So, having examined some of the details of the paragraph, let us now try to understand what these different types of nodes are by listing their properties in a table:</p>
+    <table>
+        <tr><th></th><th>network node (A)</th><th>client node (F)</th></tr>
+        <tr><th>illustration:</th><td>Usenet NNTP server (B)</td><td>Usenet user (B)</td></tr>
+        <tr><th>number of nodes:</th><td>few (D)</td><td>many (implied by D and F)</td></tr>
+        <tr><th>scale:</th><td>big server farms (E)</td><td>user (C)</td></tr>
+        <tr><th>function:</th><td>do transactions and generate (implied by F)</td><td>only do transactions and don't generate (F)</td></tr>
+    </table>
+    <p>What does Satoshi mean to "do transactions" and to "generate"? Remember the context: The start of the thread was about whether the <i>propagation of transcations</i> would scale. The previous poster had talked about "distributing" transactions and "finalising" transactions. Furthermore, consider <b>sentence G</b> where Satoshi references back to the Snack Machine post where he says he argued that "a payment processor could verify payments well enough".</p>
+    <p>Therefore:</p>
+    <p>A "client node" that can "do transactions" would seem to be a node that <i>propagates transactions through the network</i>. The "payment processor" <i>is</i> a "user".</p>
+    <p>A "network node" that can "do transactions" but also "generate" would seem to be a node that can <i>generate blocks</i>.</p>
+    <p>In the context that Satoshi was writing, it was normal and expected that <i>all users</i> of Bitcoin were running nodes that validate transactions <i>and</i> generate blocks. Satoshi envisages a time when only a small number of "network nodes" generate blocks, but he/she/they still imagine <i>all users</i> running nodes.</p>
+    
+    <h2 id="Reading">Relevant Reading</h2>
+    <p><a href="https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.400.6276&rep=rep1&type=pdf">Karame, Ghassan O., Elli Androulaki, and Srdjan Capkun. "Two Bitcoins at the Price of One? Double-Spending Attacks on Fast Payments in Bitcoin."<a/></p>
+    
+    <h2 id="Changelog">Changelog</h2>
+    <table>
+        <tr><td>0.1.2</td><td>Displays average ticks per sec.</td></tr>
+        <tr><td>0.1.1</td><td>Displays connection number and average length.</td></tr>
+        <tr><td>0.1</td><td>First version</td></tr>
+    </table>
+</body>
+</html>
