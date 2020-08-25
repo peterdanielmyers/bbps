@@ -267,7 +267,15 @@ function createNodes() {
     maxConnectionsPerNode = parseInt(document.getElementById('maxConnectionsPerNode').value,10);
     minConnectionsPerNode = parseInt(document.getElementById('minConnectionsPerNode').value,10);
     nodeIndices = [];
-    for (i = 0; i < numNodes; i++) {
+    for (i = 0; i < numNodeClumps; i++) {
+        nodes.push(new Node(
+            nodeClumps[i].x,
+            nodeClumps[i].y,
+            maxConnectionsPerNode
+        ));
+        nodeIndices.push(i)
+    }
+    for (i = 0; i < numNodes-numNodeClumps; i++) {
         nodes.push(new Node(
             Math.floor(Math.random() * (canvasWidth-nodeWidth*2)+nodeWidth),
             Math.floor(Math.random() * (canvasHeight-nodeHeight*2)+nodeHeight),
