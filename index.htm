@@ -404,7 +404,24 @@ function updateSimulationArea() {
         connections[i].update();
     }
     for (i = 0; i < numNodes; i++) {
-        nodes[i].update();
+        if (!nodes[i].bad && !nodes[i].mining) {
+            nodes[i].update();
+        }
+    }
+    for (i = 0; i < numNodes; i++) {
+        if (nodes[i].bad && !nodes[i].mining) {
+            nodes[i].update();
+        }
+    }
+    for (i = 0; i < numNodes; i++) {
+        if (!nodes[i].bad && nodes[i].mining) {
+            nodes[i].update();
+        }
+    }
+    for (i = 0; i < numNodes; i++) {
+        if (nodes[i].bad && nodes[i].mining) {
+            nodes[i].update();
+        }
     }
 }
 function startTransaction(transaction,id) {
