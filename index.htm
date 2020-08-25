@@ -276,9 +276,14 @@ function createNodes() {
         nodeIndices.push(i);
     }
     for (i = 0; i < numNodes-numNodeClumps; i++) {
+        var j = randRange(0,numNodeClumps-1);
+        var x = Math.floor(Math.random() * (canvasWidth-nodeWidth*2)+nodeWidth);
+        var y = Math.floor(Math.random() * (canvasHeight-nodeHeight*2)+nodeHeight);
+        x += Math.floor((nodeClumps[j].x - x)*(nodeClumps[j].weight*0.01));
+        y += Math.floor((nodeClumps[j].y - y)*(nodeClumps[j].weight*0.01));
         nodes.push(new Node(
-            Math.floor(Math.random() * (canvasWidth-nodeWidth*2)+nodeWidth),
-            Math.floor(Math.random() * (canvasHeight-nodeHeight*2)+nodeHeight),
+            x,
+            y,
             randRange(minConnectionsPerNode,maxConnectionsPerNode)
         ));
         nodeIndices.push(i);
