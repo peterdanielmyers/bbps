@@ -253,6 +253,16 @@ function connectNodes(node1,node2,d) {
 }
 function createNodes() {
     var i;
+    numNodeClumps = parseInt(document.getElementById('numNodeClumps').value,10);
+    minClumpWeight = parseInt(document.getElementById('minClumpWeight').value,10);
+    maxClumpWeight = parseInt(document.getElementById('maxClumpWeight').value,10);
+    for (i = 0; i < numNodeClumps; i++) {
+        nodeClumps.push(new NodeClump(
+            Math.floor(Math.random() * (canvasWidth-nodeWidth*2)+nodeWidth),
+            Math.floor(Math.random() * (canvasHeight-nodeHeight*2)+nodeHeight),
+            randRange(minClumpWeight,maxClumpWeight)
+        ));
+    }
     numNodes = parseInt(document.getElementById('numNodes').value,10);
     maxConnectionsPerNode = parseInt(document.getElementById('maxConnectionsPerNode').value,10);
     minConnectionsPerNode = parseInt(document.getElementById('minConnectionsPerNode').value,10);
