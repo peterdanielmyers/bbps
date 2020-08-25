@@ -47,10 +47,13 @@ const TRANSACTION1 = 1;
 const TRANSACTION2 = 2;
 
 class Block {
-    constructor(size,distance,protocol) {
+    constructor(size,distance,protocol,nonce,id) {
         this.size = size;
         this.distance = distance;
         this.protocol = protocol;
+        this.nonce = nonce;
+        this.id = id;
+        this.previous_id = id;
     }
 }
 class Component {
