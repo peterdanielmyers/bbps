@@ -47,8 +47,10 @@ const TRANSACTION1 = 1;
 const TRANSACTION2 = 2;
 
 class Block {
-    constructor(size) {
+    constructor(size,distance,protocol) {
         this.size = size;
+        this.distance = distance;
+        this.protocol = protocol;
     }
 }
 class Component {
