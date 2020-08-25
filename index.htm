@@ -29,7 +29,7 @@ var winningMinerColour = "green";
 var minConnectionsPerNode = 20;
 var maxConnectionsPerNode = 117;
 var nodeDistanceThreshhold = 100;
-var nodeClumps = 4;
+var numNodeClumps = 4;
 var nodes = [];
 var connections = [];
 var averageTimeInConnection = 110; //(ms)
@@ -284,7 +284,7 @@ function initPage() {
     document.getElementById('numMiningNodes').value = numMiningNodes.toString();
     document.getElementById('nodeDistanceThreshhold').value = nodeDistanceThreshhold.toString();
     document.getElementById('doubleSpendDelay').value = doubleSpendDelay.toString();
-    document.getElementById('nodeClumps').value = nodeClumps.toString();
+    document.getElementById('numNodeClumps').value = numNodeClumps.toString();
 }
 function initSimulation() {
     simulationArea = new SimulationArea();
@@ -398,7 +398,7 @@ function startTransaction(transaction,id) {
         <td><label for="lname">Min Connections per Node:</label>
             <input type="text" id="minConnectionsPerNode" name="minConnectionsPerNode"></td>
         <td><label for="lname">Node Clumps:</label>
-            <input type="text" id="nodeClumps" name="nodeClumbs"></td>
+            <input type="text" id="numNodeClumps" name="numNodeClumbs"></td>
     </tr>
     <tr>
         <td><label for="lname">Height:</label>
