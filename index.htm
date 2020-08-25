@@ -46,6 +46,11 @@ const LISTENING = 0;
 const TRANSACTION1 = 1;
 const TRANSACTION2 = 2;
 
+class Block {
+    constructor(size) {
+        this.size = size;
+    }
+}
 class Component {
     constructor(width, height, colour, x, y, type) {
         this.type = type;
