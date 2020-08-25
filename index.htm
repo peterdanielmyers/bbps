@@ -177,14 +177,9 @@ class Node {
             ctx.stroke();
         }
     }
-    receive(transaction,distance) {
-        if (this.status == LISTENING) {
-            if (this.bad && transaction == TRANSACTION1) {
-            } else {
-                this.receivedMessages.push(new Message(transaction,distance/distanceDivider));
-                globalConnectionAttempts++;
-            }
-        }
+    receive(block,distance) {
+        this.receivedMessages.push(new Message(block,(block.size/sizeDivider)*(distance/distanceDivider)));
+        globalConnectionAttempts++;
     }
     connect(n,d,c) {
         if (!this.nodes.includes(n)) {
