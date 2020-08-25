@@ -29,6 +29,7 @@ var winningMinerColour = "green";
 var minConnectionsPerNode = 20;
 var maxConnectionsPerNode = 117;
 var nodeDistanceThreshhold = 100;
+var nodeClumps = 4;
 var nodes = [];
 var connections = [];
 var averageTimeInConnection = 110; //(ms)
@@ -395,7 +396,8 @@ function startTransaction(transaction,id) {
             <input type="text" id="numBadNodes" name="numBadNodes"></td>
         <td><label for="lname">Min Connections per Node:</label>
             <input type="text" id="minConnectionsPerNode" name="minConnectionsPerNode"></td>
-        <td></td>
+        <td><label for="lname">Node Clumps:</label>
+            <input type="text" id="nodeClumps" name="nodeClumbs"></td>
     </tr>
     <tr>
         <td><label for="lname">Height:</label>
